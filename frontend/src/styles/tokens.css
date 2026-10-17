@@ -1,0 +1,31 @@
+:root {
+  --bg: #F7FCF9;
+  --sidebar: #FFFFFF;
+  --panel: #FFFFFF;
+  --elevated: #E8F8EF;
+  --mint: #E8F8EF;
+  --line: #D9EDE3;
+  --line-strong: #B7DCC9;
+  --blue: #3B82F6;
+  --cyan: #0D9488;
+  --cyan-dim: #0F766E;
+  --info: #3B82F6;
+  --green: #059669;
+  --emerald: #059669;
+  --deep: #14532D;
+  --teal: #0D9488;
+  --violet: #8B5CF6;
+  --amber: #F59E0B;
+  --red: #F97373;
+  --coral: #F97373;
+  --magenta: #8B5CF6;
+  --text: #163B32;
+  --muted: #4B6B60;
+  --muted-2: #6B8A7C;
+  --ink: #163B32;
+  --shadow: 0 10px 28px rgba(20, 83, 45, 0.07);
+  --radius: 14px;
+  --font: 'Inter', 'Hind Siliguri', 'Noto Sans Bengali', system-ui, sans-serif;
+  --display: 'Plus Jakarta Sans', 'Inter', 'Hind Siliguri', sans-serif;
+  --mono: 'JetBrains Mono', Consolas, monospace;
+}

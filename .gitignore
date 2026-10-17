@@ -1,0 +1,17 @@
+env/
+.venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.sqlite3-*
+private_uploads/
+.env
+.env.*
+!.env.example
+node_modules/
+build/
+coverage/
+*.log
+.DS_Store
+Thumbs.db
+.frontend-git-backup/
