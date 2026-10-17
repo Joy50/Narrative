@@ -1,0 +1,35 @@
+from django.urls import path
+
+from . import views, evidence, council, reports
+
+urlpatterns = [
+    path('reports/', reports.ReportListView.as_view()),
+    path('reports/<int:pk>/', reports.ReportDetailView.as_view()),
+    path('reports/<int:pk>/action/', reports.ReportActionView.as_view()),
+    path('reports/<int:pk>/export/', reports.ReportExportView.as_view()),
+    path('council/', council.CouncilListView.as_view()),
+    path('council/<int:pk>/', council.CouncilDetailView.as_view()),
+    path('council/<int:pk>/accept/', council.CouncilAcceptView.as_view()),
+    path('evidence/', evidence.EvidenceListView.as_view()),
+    path('evidence/<int:pk>/', evidence.EvidenceDetailView.as_view()),
+    path('evidence/<int:pk>/verify/', evidence.EvidenceVerifyView.as_view()),
+    path('evidence/<int:pk>/download/', evidence.EvidenceDownloadView.as_view()),
+    path('overview/', views.OverviewView.as_view()),
+    path('claims/', views.ClaimListView.as_view()),
+    path('claims/by-id/<str:claim_id>/', views.ClaimByIdView.as_view()),
+    path('claims/<int:pk>/', views.ClaimDetailView.as_view()),
+    path('claims/<int:pk>/assess/', views.AssessView.as_view()),
+    path('validated-claims/', views.ValidatedClaimListView.as_view()),
+    path('validated-claims/<int:pk>/', views.ValidatedClaimDetailView.as_view()),
+    path('sources/', views.SourceFeedListView.as_view()),
+    path('sources/scan/', views.ScanView.as_view()),
+    path('clusters/', views.NarrativeClusterListView.as_view()),
+    path('clusters/refresh/', views.ClusterRefreshView.as_view()),
+    path('alerts/', views.AlertAnalysisView.as_view()),
+    path('alerts/<str:key>/', views.AlertAnalysisView.as_view()),
+    path('alerts/<str:key>/assign/', views.AlertAssignView.as_view()),
+    path('narratives/', views.NarrativeAnalysisView.as_view()),
+    path('narratives/<slug:slug>/', views.NarrativeAnalysisView.as_view()),
+    path('intake/', views.IntakeView.as_view()),
+    path('extract/', views.ExtractView.as_view()),
+]
