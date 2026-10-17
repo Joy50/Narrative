@@ -5,6 +5,7 @@ import { rumorGet, rumorSend } from '../api/rumor';
 import PaginationBar, { pageSlice } from '../components/PaginationBar';
 import { EmptyState, ThreatPriorityIndicator, VerificationStatusBadge } from '../components/ui';
 import { useApp } from '../context/AppContext';
+import WorkflowWorkspace from '../components/WorkflowWorkspace';
 
 const tooltipStyle = {
   background: '#FFFFFF',
@@ -67,6 +68,7 @@ export default function NarrativeExplorer() {
   const { notify, ready } = useApp();
   const [params, setParams] = useSearchParams();
   const clusterParam = params.get('cluster') || '';
+  const claimParam = params.get('claim') || '';
   const [layout, setLayout] = useState('Force');
   const [query, setQuery] = useState('');
   const [payload, setPayload] = useState(null);
@@ -78,7 +80,7 @@ export default function NarrativeExplorer() {
   const listSize = 6;
 
   const load = useCallback(async (slug = clusterParam) => {
-    const path = slug ? `narratives/${encodeURIComponent(slug)}/` : 'narratives/';
+    const path = claimParam ? `narratives/?claim_id=${encodeURIComponent(claimParam)}` : slug ? `narratives/${encodeURIComponent(slug)}/` : 'narratives/';
     const result = await rumorGet(path);
     if (result.ok) {
       setPayload(result.data);
@@ -86,7 +88,7 @@ export default function NarrativeExplorer() {
     } else {
       setOnline(false);
     }
-  }, [clusterParam]);
+  }, [clusterParam, claimParam]);
 
   useEffect(() => {
     if (ready) load();
@@ -126,6 +128,7 @@ export default function NarrativeExplorer() {
 
   return (
     <>
+      <WorkflowWorkspace focus="narrative" onChange={() => load()} />
       <div className="d-flex justify-content-end gap-2 mb-3 flex-wrap">
         <button className="btn btn-outline-soft" disabled={!!busy} onClick={() => load(clusterParam)}>
           <i className="fas fa-rotate me-1" />Reload analysis

@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { rumorGet, rumorSend } from '../api/rumor';
 import { useApp } from '../context/AppContext';
+import { AnalysisOutput } from '../components/WorkflowPanel';
 
 export default function AICouncil() {
   const { notify } = useApp();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const filter = params.get('claim') || '';
   const [claimId, setClaimId] = useState(filter);
   const [run, setRun] = useState(null);
@@ -18,6 +19,9 @@ export default function AICouncil() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
+  useEffect(() => {
+    setClaimId(filter); setRun(null); setPage(1); setHistory([]);
+  }, [filter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +47,7 @@ export default function AICouncil() {
     setBusy(false);
     if (!result.ok) { setError(result.status === 404 ? 'Claim not found. Enter an existing claim ID from the scanner.' : result.data?.detail || 'Could not start council run.'); return; }
     setRun(result.data);
+    if (filter !== claimId.trim()) setParams({ claim: claimId.trim() });
     setPage(1);
     setReload((n) => n + 1);
     notify(result.data.status === 'completed' ? 'Council analysis stored' : 'Council run failed; details are recorded');
@@ -68,7 +73,7 @@ export default function AICouncil() {
         <button type="button" className="btn btn-outline-soft" disabled={busy} onClick={() => setShowHistory(!showHistory)}>Run history</button>
         <button type="button" className="btn btn-outline-soft" onClick={() => navigate('/scanner')}>Browse claims</button>
       </div>
-      <p className="small mt-2 mb-0">Local rules and recorded evidence corpus. External AI, live web retrieval and media detectors are not configured. Findings require human review.</p>
+      <p className="small mt-2 mb-0">Council runs OpenAI verification and web research, routes linked media to the configured forensic service, then analyzes narratives, creates review alerts when needed, and prepares an intelligence report draft. Findings require review.</p>
     </form>
     {error && <div className="alert alert-danger" role="alert">{error} <button className="btn btn-sm btn-outline-soft" onClick={() => setReload((n) => n + 1)}>Reload history</button></div>}
     {loading && <p role="status">Loading council history…</p>}
@@ -92,6 +97,8 @@ export default function AICouncil() {
         <div className="meta">{new Date(run.created_at).toLocaleString()} · {run.agents.length} agent outputs · {run.snapshot.engine || 'Local rules'}</div>
       </div>
       {run.error && <div className="alert alert-danger" role="alert">{run.error}</div>}
+      {run.snapshot.report_id && <button className="btn btn-primary-soft mb-3" onClick={() => navigate(`/reports?report=${run.snapshot.report_id}`)}>Open intelligence report draft</button>}
+      {run.snapshot.analysis_runs?.map((analysis) => <AnalysisOutput key={analysis.id} analysis={analysis} />)}
       <div className="row g-3 mb-4">
         {run.agents.map((agent) => <div className="col-xl-4 col-md-6" key={agent.name}>
           <div className={`agent-card ${agent.status === 'complete' ? 'complete' : 'warning'}`}>

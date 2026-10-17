@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { request, readSession, refreshSession } from '../api/client';
 import { useApp } from '../context/AppContext';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 const base = '/api/rumor/evidence/';
 const sizeLabel = (bytes) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
 
 export default function EvidenceVault() {
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const claimParam = params.get('claim') || '';
+  const caseParam = params.get('case') || '';
+  const evidenceParam = params.get('evidence') || '';
   const { notify } = useApp();
   const [rows, setRows] = useState([]);
   const [stats, setStats] = useState({});
@@ -16,16 +22,24 @@ export default function EvidenceVault() {
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState(null);
-  const [form, setForm] = useState({ case_reference: '', source_url: '', notes: '' });
+  const [form, setForm] = useState({ claim_id: claimParam, case_reference: caseParam, source_url: '', notes: '' });
+  useEffect(() => {
+    setSelectedId(evidenceParam ? Number(evidenceParam) : null);
+    setForm((previous) => ({ ...previous, claim_id: claimParam, case_reference: caseParam }));
+  }, [claimParam, caseParam, evidenceParam]);
   const selected = rows.find((item) => item.id === selectedId) || rows[0];
 
   const load = useCallback(async () => {
     setLoading(true);
-    const result = await request(`${base}?q=${encodeURIComponent(query)}`);
+    const filters = new URLSearchParams({ q: query });
+    if (claimParam) filters.set('claim_id', claimParam);
+    if (caseParam) filters.set('case_reference', caseParam);
+    if (evidenceParam) filters.set('id', evidenceParam);
+    const result = await request(`${base}?${filters}`);
     if (result.ok) { setRows(result.data.results); setStats(result.data.stats); setError(''); }
     else setError(result.data?.detail || 'Could not load evidence.');
     setLoading(false);
-  }, [query]);
+  }, [query, claimParam, caseParam, evidenceParam]);
   useEffect(() => { const timer = setTimeout(load, 250); return () => clearTimeout(timer); }, [load]);
 
   const upload = async (event) => {
@@ -39,7 +53,7 @@ export default function EvidenceVault() {
     const result = await request(base, { method: 'POST', body: data });
     if (result.ok) {
       setSelectedId(result.data.id); setUploading(false); setFile(null);
-      setForm({ case_reference: '', source_url: '', notes: '' }); setQuery('');
+      setForm({ claim_id: claimParam, case_reference: caseParam, source_url: '', notes: '' }); setQuery('');
       notify('Original stored and SHA-256 recorded.'); await load();
     } else notify(result.data?.detail || Object.values(result.data || {}).flat().join(' ') || 'Upload failed.');
     setBusy(false);
@@ -80,6 +94,7 @@ export default function EvidenceVault() {
 
   return <>
     <div className="d-flex justify-content-end gap-2 mb-3">
+      {(claimParam || caseParam || evidenceParam) && <button className="btn btn-outline-soft" onClick={() => navigate('/vault')}>Show all evidence</button>}
       <button className="btn btn-primary-soft" onClick={() => setUploading(!uploading)}><i className="fas fa-upload me-1" />Ingest evidence</button>
     </div>
     {uploading && <form className="card-stat p-3 mb-4" onSubmit={upload}>
@@ -87,7 +102,7 @@ export default function EvidenceVault() {
       <label className="form-label-clean" htmlFor="evidence-file">File (up to 500 MB)</label>
       <input id="evidence-file" className="form-control mb-3" type="file" required onChange={(e) => setFile(e.target.files[0])} />
       {Object.entries(form).map(([key, value]) => <label className="d-block mb-3" key={key}>
-        <span className="form-label-clean">{key === 'case_reference' ? 'Case reference (optional)' : key === 'source_url' ? 'Source URL (optional)' : 'Notes'}</span>
+        <span className="form-label-clean">{key === 'claim_id' ? 'Claim ID (optional)' : key === 'case_reference' ? 'Case reference (optional)' : key === 'source_url' ? 'Source URL (optional)' : 'Notes'}</span>
         <input className="form-control" type={key === 'source_url' ? 'url' : 'text'} maxLength={key === 'case_reference' ? 120 : key === 'source_url' ? 1000 : undefined} value={value} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
       </label>)}
       <button className="btn btn-primary-soft" disabled={busy}>{busy ? 'Uploading...' : 'Store original'}</button>
@@ -111,7 +126,11 @@ export default function EvidenceVault() {
         <div className="card-header-clean">{selected.evidence_id} ? {selected.name}</div>
         <div className="p-3">
           <div className="stat-mini mb-2">Collected {new Date(selected.created_at).toLocaleString()}</div>
-          <p>Case: {selected.case_reference || 'Unassigned'}</p>
+          <div className="d-flex gap-2 flex-wrap mb-3">
+            {selected.claim_id && <button className="btn btn-outline-soft btn-sm" onClick={() => navigate(`/verify?id=${encodeURIComponent(selected.claim_id)}`)}>Open claim {selected.claim_id}</button>}
+            {selected.case_reference && <button className="btn btn-outline-soft btn-sm" onClick={() => navigate(`/cases?case=${encodeURIComponent(selected.case_reference)}`)}>Open case {selected.case_reference}</button>}
+            {selected.claim_id && selected.media_type && <button className="btn btn-outline-soft btn-sm" onClick={() => navigate(`/forensic?claim=${encodeURIComponent(selected.claim_id)}`)}>Analyze this claim's media</button>}
+          </div>
           {selected.source_url && <p style={{ overflowWrap: 'anywhere' }}>Source: {selected.source_url}</p>}
           {selected.notes && <p>{selected.notes}</p>}
           <p>Last integrity check: {selected.verified_at ? new Date(selected.verified_at).toLocaleString() : 'Never'}</p>

@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { rumorSend } from '../api/rumor';
+import { rumorGet, rumorSend } from '../api/rumor';
 import { request } from '../api/client';
 import { useApp } from '../context/AppContext';
 
@@ -11,14 +11,13 @@ const TYPES = [
 ];
 
 const EMPTY = {
-  url: 'https://facebook.com/example/posts/8421',
+  url: '',
   language: 'Bangla (বাংলা)',
   platform: 'Facebook',
   text: '',
   textSource: '',
   description: '',
   sourceUrl: '',
-  investigation: 'Create new investigation',
   priority: 'High',
   notes: '',
 };
@@ -46,6 +45,17 @@ export default function SubmitContent() {
   const [authorized, setAuthorized] = useState(true);
   const [dragover, setDragover] = useState(false);
   const [status, setStatus] = useState('idle');
+  const [recent, setRecent] = useState([]);
+  const [recentError, setRecentError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    rumorGet('claims/?page_size=3').then((result) => {
+      if (cancelled) return;
+      if (result.ok) setRecent(result.data.results || []);
+      else setRecentError('Recent submissions could not be loaded.');
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const hasContent = type === 'url'
     ? Boolean(form.url.trim())
@@ -60,7 +70,7 @@ export default function SubmitContent() {
     {
       ok: type !== 'media' || files.length > 0,
       title: 'File type & size',
-      desc: files[0] ? `${files[0].type || 'file'} · ${formatSize(files[0].size)} · within 500 MB limit` : 'Video/mp4 · 84.2 MB · within 500 MB limit',
+      desc: files[0] ? `${files[0].type || 'file'} · ${formatSize(files[0].size)} · within 500 MB limit` : type === 'media' ? 'Choose an original image, audio, or video file up to 500 MB' : 'No file required for text or URL intake',
       icon: type === 'media' && !files.length ? 'fa-clock' : 'fa-check-circle',
       tone: type === 'media' && !files.length ? 'ci-pending' : 'ci-ok',
     },
@@ -82,23 +92,28 @@ export default function SubmitContent() {
     setStatus('busy');
     if (type === 'media') {
       const remaining = [...files];
+      let firstClaim = '';
       for (const file of files) {
         const body = new FormData();
         body.append('file', file);
         body.append('source_url', form.sourceUrl);
         body.append('notes', [form.description, form.notes].filter(Boolean).join('\n'));
-        body.append('case_reference', form.investigation === 'Create new investigation' ? '' : form.investigation);
-        const result = await request('/api/rumor/evidence/', { method: 'POST', body });
+        body.append('source_kind', 'media');
+        body.append('description', form.description);
+        body.append('priority', form.priority);
+        body.append('source', form.platform || 'Media intake');
+        const result = await request('/api/rumor/intake/', { method: 'POST', body });
         if (!result.ok) {
           setFiles(remaining); setStatus('idle');
-          notify('Upload stopped. Successfully stored files are in Evidence Repository; remaining files can be retried.');
+          notify('Upload stopped. Successfully submitted files are in Rumor Scanner with linked originals; retry the remaining files.');
           return;
         }
+        firstClaim = firstClaim || result.data?.created?.[0]?.claim_id || '';
         remaining.shift();
       }
       setFiles([]); setStatus('done');
-      notify('Original files stored in Evidence Repository.');
-      navigate('/vault');
+      notify('Media added to Rumor Scanner with linked originals and investigation cases.');
+      navigate(firstClaim ? `/scanner?claim=${encodeURIComponent(firstClaim)}` : '/scanner');
       return;
     }
     const result = await rumorSend('intake/', {
@@ -162,7 +177,7 @@ export default function SubmitContent() {
           <div className="card-stat p-0 overflow-hidden">
             <div className="card-header-clean d-flex justify-content-between align-items-center">
               <span><i className="fas fa-edit" /> Submission details</span>
-              <span className="badge-soft">Draft autosaved</span>
+              <span className="badge-soft">Intake form</span>
             </div>
             <div className="p-4">
               <label className="form-label-clean">Content type <span className="req">*</span></label>
@@ -286,14 +301,8 @@ export default function SubmitContent() {
 
               <div className="row g-3 mb-3">
                 <div className="col-md-6">
-                  <label className="form-label-clean">Link to investigation (optional)</label>
-                  <select className="form-select" value={form.investigation} onChange={setField('investigation')}>
-                    <option>Create new investigation</option>
-                    <option>INV-2025-0421 — Manipulated video: election rally</option>
-                    <option>INV-2025-0419 — Audio deepfake: emergency warning</option>
-                    <option>INV-2025-0417 — Recycled flood imagery</option>
-                    <option>No investigation (scan only)</option>
-                  </select>
+                  <div className="form-label-clean">Investigation</div>
+                  <p className="small text-muted">Submissions create or reuse their claim investigation. To add evidence to an existing case, open that case and use Add evidence.</p>
                 </div>
                 <div className="col-md-6">
                   <label className="form-label-clean">Priority hint</label>
@@ -382,13 +391,13 @@ export default function SubmitContent() {
             <div className="card-header-clean"><i className="fas fa-gears" /> Post‑submission pipeline</div>
             <div className="p-3">
               {[
-                'Validate source authorization, file type, size',
-                'Store original unchanged in evidence vault',
-                'Compute SHA‑256 and record provenance',
-                'Scan for malware and unsafe content',
-                'Extract metadata, text, frames, or audio',
-                'Deduplicate and detect language',
-                'Queue relevant AI and forensic workers',
+                'Create or find the claim in Rumor Scanner',
+                'Create or reuse its investigation case',
+                'Store uploaded originals with SHA-256 and provenance',
+                'Assign an analyst or AI Council from the scanner',
+                'Run verification and any required media analysis',
+                'Review narratives and internal alerts',
+                'Prepare an intelligence report draft',
               ].map((line, i) => (
                 <div className="d-flex align-items-start mb-2" style={{ fontSize: '0.78rem' }} key={line}>
                   <span className="badge-soft me-2" style={{ minWidth: 22, textAlign: 'center' }}>{i + 1}</span>
@@ -399,23 +408,13 @@ export default function SubmitContent() {
           </div>
 
           <div className="card-stat p-0 overflow-hidden">
-            <div className="card-header-clean d-flex justify-content-between"><span><i className="fas fa-history" /> Your recent submissions</span><span className="badge-soft">3 today</span></div>
+            <div className="card-header-clean"><span><i className="fas fa-history" /> Recent scanner submissions</span></div>
             <div className="p-3">
-              {[
-                ['rally_video.mp4', 'INV-2025-0421 · 12 min ago · queued', 'PROCESSING', 'rgba(255,193,77,0.12)', '#ffc14d'],
-                ['facebook.com/…/posts/8421', 'INV-2025-0421 · 2h ago · intake complete', 'HASHED', 'rgba(61,255,154,0.12)', '#3dff9a'],
-                ['notice_text.txt', 'INV-2025-0421 · 3h ago · analysed', 'ANALYSED', 'rgba(77,163,255,0.12)', '#4da3ff'],
-              ].map(([name, meta, tag, bg, color]) => (
-                <div className="recent-item" key={name}>
-                  <div>
-                    <div className="ri-name">{name}</div>
-                    <div className="ri-meta">{meta}</div>
-                  </div>
-                  <span className="mini-tag" style={{ background: bg, color }}>{tag}</span>
-                </div>
-              ))}
+              {recentError && <p className="small text-muted">{recentError}</p>}
+              {!recentError && !recent.length && <p className="small text-muted">No recent submissions available.</p>}
+              {recent.map((row) => <button type="button" className="overview-record" key={row.id} onClick={() => navigate(`/scanner?claim=${encodeURIComponent(row.claim_id)}`)}><strong>{row.claim_id}</strong><div className="small">{row.text}</div><span className="stat-mini">{row.workflow_stage} · {row.status}</span></button>)}
               <div className="text-end mt-2">
-                <button className="btn btn-link small p-0 link-cyan" onClick={() => navigate('/vault')}>
+                <button className="btn btn-link small p-0 link-cyan" onClick={() => navigate('/scanner')}>
                   View all submissions <i className="fas fa-arrow-right ms-1" />
                 </button>
               </div>

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { rumorGet, rumorSend } from '../api/rumor';
 import { EvidenceSourceCard } from '../components/ui';
+import WorkflowPanel from '../components/WorkflowPanel';
+import WorkflowWorkspace from '../components/WorkflowWorkspace';
 import { useApp } from '../context/AppContext';
 
 const VERDICTS = [
@@ -18,7 +20,7 @@ export default function FactVerification() {
   const { notify } = useApp();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const claimId = params.get('id') || 'CL-2025-8842';
+  const claimId = params.get('id') || '';
   const assessmentId = params.get('assessment');
   const [claim, setClaim] = useState(null);
   const [evidence, setEvidence] = useState([]);
@@ -26,12 +28,15 @@ export default function FactVerification() {
   const [confidence, setConfidence] = useState(70);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
+    setClaim(null); setEvidence([]); setNotes(''); setError('');
+    if (!claimId) return undefined;
     rumorGet(`claims/by-id/${encodeURIComponent(claimId)}/${assessmentId ? `?assessment=${encodeURIComponent(assessmentId)}` : ''}`).then((result) => {
       if (cancelled) return;
-      if (!result.ok) return;
+      if (!result.ok) { setError(result.data?.detail || 'The selected claim could not be loaded.'); return; }
       setClaim(result.data);
       setEvidence(result.data.evidence_items || []);
       setNotes(result.data.evidence || '');
@@ -61,13 +66,15 @@ export default function FactVerification() {
       return;
     }
     notify(verdict === 'supported' ? 'Supported verdict stored in the rumor validated-claim database' : 'Assessment queued for supervisor in the rumor app');
-    navigate(`/scanner?claim=${claim.claim_id}`);
+    navigate(`/explorer?claim=${encodeURIComponent(claim.claim_id)}`);
   };
+
+  if (!claimId) return <WorkflowWorkspace focus="verification" />;
 
   return (
     <>
       <div className="d-flex justify-content-end gap-2 mb-3">
-        <button className="btn btn-outline-soft" onClick={() => navigate('/scanner')}><i className="fas fa-arrow-left me-1" />Back to scanner</button>
+        <button className="btn btn-outline-soft" onClick={() => navigate(`/scanner?claim=${encodeURIComponent(claimId)}`)}><i className="fas fa-arrow-left me-1" />Back to scanner</button>
         <button className="btn btn-primary-soft" disabled={!claim || busy} onClick={submit}>
           <i className={`fas ${busy ? 'fa-spinner fa-spin' : 'fa-paper-plane'} me-1`} />Submit for review
         </button>
@@ -86,6 +93,11 @@ export default function FactVerification() {
         </div>
       </div>
 
+      {error && <div className="alert alert-danger" role="alert">{error}</div>}
+      <WorkflowPanel key={claimId} claimId={claimId} focus="verification" onChange={async () => {
+        const result = await rumorGet(`claims/by-id/${encodeURIComponent(claimId)}/`);
+        if (result.ok) setEvidence(result.data.evidence_items || []);
+      }} />
       <div className="row g-4">
         <div className="col-xl-7">
           <div className="card-stat mb-4 p-0 overflow-hidden">

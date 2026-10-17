@@ -1,160 +1,123 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { gpobGet } from '../api/gpob';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { rumorGet } from '../api/rumor';
 import { IntelligenceMetricCard, ThreatPriorityIndicator } from '../components/ui';
 
-const TREND = [
-  { label: 'T-11', claims: 42 }, { label: 'T-10', claims: 55 }, { label: 'T-9', claims: 48 },
-  { label: 'T-8', claims: 61 }, { label: 'T-7', claims: 78 }, { label: 'T-6', claims: 70 },
-  { label: 'T-5', claims: 84 }, { label: 'T-4', claims: 91 }, { label: 'T-3', claims: 88 },
-  { label: 'T-2', claims: 104 }, { label: 'T-1', claims: 97 }, { label: 'Now', claims: 112 },
-];
-const CLASSES = [
-  { name: 'Unverified', value: 47, color: '#64748B' },
-  { name: 'Misleading', value: 18, color: '#F59E0B' },
-  { name: 'Synthetic', value: 9, color: '#38BDF8' },
-  { name: 'Supported', value: 31, color: '#10B981' },
-  { name: 'False / refuted', value: 12, color: '#EF4444' },
-];
+const COLORS = { Unverified: '#64748B', Supported: '#059669', Refuted: '#DC2626', Misleading: '#D97706', 'Out of Context': '#2563EB', 'Synthetic Media': '#7C3AED', 'Satire / Parody': '#0D9488' };
+const tooltipStyle = { background: '#FFFFFF', border: '1px solid #D9EDE3', borderRadius: 12, fontSize: 12 };
+const stagePath = (claimId, kind) => `${kind === 'forensic' ? '/forensic?claim=' : kind === 'narrative' ? '/explorer?claim=' : '/verify?id='}${encodeURIComponent(claimId)}`;
 
-const tooltipStyle = { background: '#FFFFFF', border: '1px solid #D9EDE3', color: '#163B32', borderRadius: 12, fontSize: 12, boxShadow: '0 10px 28px rgba(20, 83, 45, 0.08)' };
+function Panel({ title, action, children }) {
+  return <section className="card-stat p-0 overflow-hidden h-100">
+    <div className="card-header-clean d-flex justify-content-between align-items-center flex-wrap gap-2"><h2 className="h6 mb-0">{title}</h2>{action}</div>
+    <div className="p-3">{children}</div>
+  </section>;
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [media, setMedia] = useState(null);
-  const [alerts, setAlerts] = useState(null);
-
+  const { range = '7d' } = useOutletContext() || {};
+  const days = range === '24h' ? 1 : range === '30d' ? 30 : 7;
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
   useEffect(() => {
-    gpobGet('statistics/?period=7').then((result) => { if (result.ok) setMedia(result.data); });
-    rumorGet('alerts/').then((result) => { if (result.ok) setAlerts(result.data); });
-  }, []);
-
-  const series = media?.series || [];
-  const trend = media?.trend || '—';
-  const delta = media?.delta ?? 0;
-
-  return (
-    <div className="overview-fit">
-      <div className="row g-2">
-        {[
-          ['Awaiting verification', '47', '12 high priority', 'fa-clock', 'warning', 'kpi-amber'],
-          ['High-priority alerts', alerts ? String((alerts.overview?.critical || 0) + (alerts.overview?.high || 0)) : '—', alerts ? `${alerts.overview?.unassigned ?? 0} unassigned` : 'loading', 'fa-bell', 'critical', 'kpi-coral'],
-          ['Active investigations', '23', '5 critical', 'fa-folder-open', 'info', 'kpi-sky'],
-          ['Verified false claims', '12', 'human-reviewed', 'fa-ban', 'violet', 'kpi-violet'],
-        ].map(([label, value, hint, icon, tone, pastel]) => (
-          <div className="col-xl-3 col-md-6" key={label}>
-            <IntelligenceMetricCard label={label} value={value} hint={hint} icon={icon} tone={tone} pastel={pastel} />
-          </div>
-        ))}
-      </div>
-
-      <div className="row g-3">
-        <div className="col-lg-7">
-          <div className="card-stat p-0 overflow-hidden">
-            <div className="card-header-clean d-flex justify-content-between">
-              <span>Claim volume · 12 intervals</span>
-              <span className="stat-mini">Observed intake, not a truth score</span>
-            </div>
-            <div className="px-3 pt-2 pb-1" style={{ height: 148 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={TREND}>
-                  <CartesianGrid stroke="#D9EDE3" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fill: '#4B6B60', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(5,150,105,0.06)' }} />
-                  <Bar dataKey="claims" fill="#059669" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-        <div className="col-lg-5">
-          <div className="card-stat p-0 overflow-hidden h-100">
-            <div className="card-header-clean">Classification mix</div>
-            <div className="p-3">
-              <div className="d-flex align-items-center gap-3">
-                <div style={{ width: 110, height: 110, flexShrink: 0 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={CLASSES} dataKey="value" nameKey="name" innerRadius={34} outerRadius={50} paddingAngle={2}>
-                        {CLASSES.map((item) => <Cell key={item.name} fill={item.color} />)}
-                      </Pie>
-                      <Tooltip contentStyle={tooltipStyle} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex-grow-1">
-                  {CLASSES.map((item) => (
-                    <div className="d-flex justify-content-between small mb-1" key={item.name}>
-                      <span><span className="dot" style={{ background: item.color, boxShadow: 'none' }} />{item.name}</span>
-                      <span>{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="row g-3 overview-body flex-grow-1">
-        <div className="col-lg-7 d-flex">
-          <div className="card-stat p-0 overflow-hidden w-100 d-flex flex-column">
-            <div className="card-header-clean d-flex justify-content-between align-items-center flex-wrap gap-2">
-              <span>Media time series · 7 days</span>
-              <div className="d-flex align-items-center gap-2">
-                <span className="stat-mini">{media ? `${media.total} articles · ${delta > 0 ? '+' : ''}${delta} vs prior · ${trend}` : 'Loading corpus…'}</span>
-                <button className="btn btn-sm btn-outline-soft" onClick={() => navigate('/media-stats')}>Insights</button>
-              </div>
-            </div>
-            <div className="px-3 pt-2 pb-1 flex-grow-1" style={{ minHeight: 148 }}>
-              {series.length === 0 ? (
-                <div className="stat-mini p-3">No dated articles in this window.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={series}>
-                    <CartesianGrid stroke="#D9EDE3" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fill: '#4B6B60', fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-                    <YAxis allowDecimals={false} tick={{ fill: '#4B6B60', fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
-                    <Tooltip contentStyle={tooltipStyle} />
-                    <Area type="monotone" dataKey="articles" name="Articles" stroke="#3B82F6" fill="rgba(59,130,246,0.16)" strokeWidth={2} />
-                    <Line type="monotone" dataKey="ma3" name="3-day average" stroke="#0D9488" strokeWidth={2} dot={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-            <div className="px-3 pb-2 stat-mini">3-day average · not a forecast</div>
-          </div>
-        </div>
-
-        <div className="col-lg-5 d-flex">
-          <div className="card-stat p-0 overflow-hidden w-100 d-flex flex-column">
-            <div className="card-header-clean d-flex justify-content-between">
-              <span>Upcoming top 5 alerts</span>
-              <button className="btn btn-sm btn-outline-soft" onClick={() => navigate('/warning')}>Alert analysis</button>
-            </div>
-            <div className="p-2 flex-grow-1">
-              {!alerts && <div className="stat-mini p-2">Loading alert analysis…</div>}
-              {alerts && (alerts.alerts || []).length === 0 && <div className="stat-mini p-2">No active watch alerts.</div>}
-              {(alerts?.alerts || []).slice(0, 5).map((alert, index) => (
-                <div className="queue-item overview-alert" key={alert.id} onClick={() => navigate(`/warning?alert=${encodeURIComponent(alert.id)}`)}>
-                  <div className="d-flex align-items-start gap-2">
-                    <span className="overview-rank">{index + 1}</span>
-                    <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <div className="d-flex justify-content-between gap-2 align-items-start">
-                        <strong className="overview-alert-title">{alert.title}</strong>
-                        <ThreatPriorityIndicator level={alert.sev[0].toUpperCase() + alert.sev.slice(1)} />
-                      </div>
-                      <div className="stat-mini mt-1">{alert.due} · review {alert.score} · {alert.meta}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    rumorGet(`intelligence-overview/?days=${days}`).then((result) => {
+      if (cancelled) return;
+      if (result.ok) setData(result.data);
+      else setError(result.data?.detail || 'Intelligence Overview could not be loaded.');
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [days, reload]);
+  const metric = (key) => data ? data.totals[key] : '—';
+  const snapshotDays = data?.days || days;
+  const dateLabel = snapshotDays === 1 ? 'Today' : `Last ${snapshotDays} calendar days`;
+  const time = (value) => new Date(value).toLocaleString(undefined, { timeZone: data?.timezone || 'Asia/Dhaka', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return <div className="overview-fit intelligence-overview" aria-busy={loading}>
+    <div className="overview-toolbar">
+      <div><h2 className="h5 mb-1">Investigation command center</h2><p className="text-muted small mb-0">Current queues across intake, analysis, alerts, and reporting.</p></div>
+      <div className="d-flex gap-2 flex-wrap">
+        <button className="btn btn-outline-soft" disabled={loading} onClick={() => setReload((value) => value + 1)}><i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-rotate'} me-2`} />Refresh</button>
+        <button className="btn btn-primary-soft" onClick={() => navigate('/submit')}><i className="fas fa-plus me-2" />Submit content</button>
       </div>
     </div>
-  );
+    {loading && <p className="small text-muted mb-0" role="status">Updating overview…</p>}
+    {error && <div className="alert alert-danger mb-0" role="alert">{error} {data && 'Showing the last loaded snapshot.'}<button className="btn btn-link" onClick={() => setReload((value) => value + 1)}>Retry</button></div>}
+    <div className="row g-3">
+      {[
+        ['Unverified claims', 'unverified', `${metric('claims')} total claims`, 'fa-clock', 'warning', 'kpi-amber', '/scanner'],
+        ['Unassigned claims', 'unassigned', 'Unverified and awaiting assignment', 'fa-user-plus', 'info', 'kpi-sky', '/scanner'],
+        ['Active investigations', 'active_cases', 'Excludes published and closed', 'fa-folder-open', 'info', 'kpi-sky', '/cases'],
+        ['High-priority alerts', 'high_priority_alerts', 'High and critical review leads', 'fa-bell', 'critical', 'kpi-coral', '/warning'],
+        ['Report drafts', 'draft_reports', `${metric('pending_reports')} pending review`, 'fa-file-lines', 'success', 'kpi-mint', '/reports'],
+        ['Analysis needs attention', 'analysis_attention', 'Latest failed or blocked stages', 'fa-triangle-exclamation', 'warning', 'kpi-amber', '#attention'],
+      ].map(([label, key, hint, icon, tone, pastel, path]) => <div className="col-12 col-sm-6 col-xl-4 col-xxl-2" key={key}>
+        <button className="overview-metric-link" aria-label={`Open ${label}`} onClick={() => path === '#attention' ? document.getElementById('overview-attention')?.scrollIntoView({ behavior: 'smooth' }) : navigate(path)}>
+          <IntelligenceMetricCard label={label} value={metric(key)} hint={hint} icon={icon} tone={tone} pastel={pastel} />
+        </button>
+      </div>)}
+    </div>
+    {data && <>
+      <Panel title="Investigation pipeline" action={<button className="btn btn-sm btn-outline-soft" onClick={() => navigate('/council')}>AI Council · {data.totals.council_runs} runs</button>}>
+        <div className="overview-pipeline">{data.stages.map((stage, index) => <div className="overview-stage" key={stage.key}><span className="overview-stage-number">{index + 1}</span><div><div className="small text-muted">{stage.label}</div><strong>{stage.count}</strong></div></div>)}</div>
+        <p className="stat-mini mb-0 mt-2">Current claim stages across all records. Media is routed through forensics; reports remain subject to review.</p>
+      </Panel>
+      <div className="row g-3">
+        <div className="col-lg-7"><Panel title="Submitted claims" action={<span className="stat-mini">{dateLabel} · {data.timezone}</span>}>
+          <div className="overview-chart" role="img" aria-label={`${data.intake.reduce((sum, point) => sum + point.claims, 0)} submitted claims in the selected calendar window`}>
+            <ResponsiveContainer width="100%" height="100%"><BarChart data={data.intake}>
+              <CartesianGrid stroke="#D9EDE3" vertical={false} /><XAxis dataKey="label" tick={{ fill: '#4B6B60', fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" /><YAxis allowDecimals={false} width={28} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(5,150,105,0.06)' }} /><Bar dataKey="claims" name="Submitted claims" fill="#059669" radius={[5, 5, 0, 0]} />
+            </BarChart></ResponsiveContainer>
+          </div><p className="stat-mini mb-0">Recorded intake dates, including days with no submissions.</p>
+        </Panel></div>
+        <div className="col-lg-5"><Panel title="Claim classification" action={<span className="stat-mini">All records</span>}>
+          {data.classifications.length ? <div className="overview-classification">
+            <div className="overview-donut"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data.classifications} dataKey="value" nameKey="name" innerRadius={40} outerRadius={62} paddingAngle={2}>{data.classifications.map((item) => <Cell key={item.name} fill={COLORS[item.name] || '#64748B'} />)}</Pie><Tooltip contentStyle={tooltipStyle} /></PieChart></ResponsiveContainer></div>
+            <ul className="overview-legend">{data.classifications.map((item) => <li key={item.name}><span><span className="overview-legend-dot" style={{ background: COLORS[item.name] || '#64748B' }} />{item.name}</span><strong>{item.value}</strong></li>)}</ul>
+          </div> : <p className="text-muted small mb-0">No claims recorded yet.</p>}
+        </Panel></div>
+      </div>
+      <div className="row g-3">
+        <div className="col-lg-7"><Panel title="Verification queue" action={<button className="btn btn-sm btn-outline-soft" onClick={() => navigate('/scanner')}>Open scanner</button>}>
+          {!data.queue.length && <p className="small text-muted mb-0">No unverified claims waiting.</p>}
+          {data.queue.map((claim) => <button className="overview-record" key={claim.claim_id} onClick={() => navigate(stagePath(claim.claim_id, claim.stage))}>
+            <div className="d-flex justify-content-between align-items-start gap-2"><strong className="overview-record-title">{claim.text}</strong><ThreatPriorityIndicator level={claim.priority} /></div>
+            <div className="stat-mini mt-1">{claim.claim_id} · {claim.analyst || 'Unassigned'} · {claim.stage.replace('_', ' ')}{claim.media_type ? ` · ${claim.media_type}` : ''}</div>
+          </button>)}
+        </Panel></div>
+        <div className="col-lg-5"><Panel title="Priority alerts" action={<button className="btn btn-sm btn-outline-soft" onClick={() => navigate('/warning')}>View all alerts</button>}>
+          {!data.alerts.length && <p className="small text-muted mb-0">No active alerts. Alerts are internal review leads.</p>}
+          {data.alerts.map((alert) => <button className="overview-record" key={alert.id} onClick={() => navigate(`/warning?alert=${encodeURIComponent(alert.id)}`)}>
+            <div className="d-flex justify-content-between gap-2 align-items-start"><strong className="overview-record-title">{alert.title}</strong><ThreatPriorityIndicator level={alert.sev.charAt(0).toUpperCase() + alert.sev.slice(1)} /></div>
+            <div className="stat-mini mt-1">{alert.assignee || 'Unassigned'} · {alert.ref}</div>
+          </button>)}
+        </Panel></div>
+      </div>
+      <div className="row g-3" id="overview-attention">
+        <div className="col-lg-6"><Panel title="Analysis and provider readiness">
+          <div className="overview-provider"><span>OpenAI verification and narrative<br /><small className="text-muted">{data.providers.openai.model || 'No model configured'}</small></span><span className={`overview-readiness ${data.providers.openai.ready ? 'ready' : 'blocked'}`}>{data.providers.openai.ready ? 'Configured' : 'Setup required'}</span></div>
+          <div className="overview-provider mb-3"><span>Image, audio, and video forensics</span><span className={`overview-readiness ${data.providers.forensic.ready ? 'ready' : 'blocked'}`}>{data.providers.forensic.ready ? 'Configured' : 'Setup required'}</span></div>
+          <p className="stat-mini">Configuration status does not test provider availability or account quota.</p>
+          {!data.attention.length && <p className="small text-muted mb-0">No failed or blocked latest analysis stages.</p>}
+          {data.attention.map((run) => <button className="overview-record" key={run.id} onClick={() => navigate(stagePath(run.claim_id, run.kind))}><strong>{run.claim_id} · {run.kind}</strong><span className="stat-mini d-block">{run.error || run.status}</span></button>)}
+        </Panel></div>
+        <div className="col-lg-6"><Panel title="Recent reports" action={<button className="btn btn-sm btn-outline-soft" onClick={() => navigate('/reports')}>Report library</button>}>
+          {!data.reports.length && <p className="small text-muted mb-0">No intelligence reports yet. Start with a claim investigation.</p>}
+          {data.reports.map((report) => <button className="overview-record" key={report.id} onClick={() => navigate(`/reports?report=${report.id}`)}><div className="d-flex justify-content-between gap-2"><strong>{report.title}</strong><span className="badge-soft">{report.status}</span></div><span className="stat-mini">Report #{report.id} · v{report.version}</span></button>)}
+        </Panel></div>
+      </div>
+      <Panel title="Recent investigation activity" action={<span className="stat-mini">{dateLabel}</span>}>
+        {!data.activity.length && <p className="small text-muted mb-0">No case or report activity in this window.</p>}
+        <div className="overview-activity">{data.activity.map((event) => <button className="overview-record" key={event.id} onClick={() => navigate(event.path)}><strong>{event.title}</strong><span className="stat-mini d-block">{event.reference} · {event.actor || 'System'} · {time(event.created_at)}</span></button>)}</div>
+      </Panel>
+      <p className="stat-mini mb-2">Snapshot updated {time(data.generated_at)} ({data.timezone}). Queue totals cover all records; the selected window applies to intake and activity.</p>
+    </>}
+  </div>;
 }

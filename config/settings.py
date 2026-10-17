@@ -12,9 +12,25 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 from datetime import timedelta
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load only the application's provider settings from the ignored local file.
+# Explicit process environment variables take precedence.
+_provider_keys = {'OPENAI_API_KEY', 'OPENAI_MODEL', 'FORENSIC_SERVICE_URL', 'FORENSIC_SERVICE_TOKEN'}
+_local_env = BASE_DIR / '.env'
+if _local_env.is_file():
+    for _line in _local_env.read_text(encoding='utf-8-sig').splitlines():
+        if not _line.strip() or _line.lstrip().startswith('#') or '=' not in _line:
+            continue
+        _name, _value = _line.split('=', 1)
+        _name, _value = _name.strip(), _value.strip()
+        if len(_value) >= 2 and _value[0] == _value[-1] and _value[0] in ('"', "'"):
+            _value = _value[1:-1]
+        if _name in _provider_keys:
+            os.environ.setdefault(_name, _value)
 
 
 # Quick-start development settings - unsuitable for production
@@ -132,8 +148,8 @@ ORGANIZATION_CLEARANCE_TOKEN = 'NS-ALPHA-7'
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
-    'http://localhost:8001',
-    'http://127.0.0.1:8001',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
 ]
 CORS_ALLOW_CREDENTIALS = True
 
@@ -166,3 +182,10 @@ MAILERS = {
 
 # Originals are served only through authenticated evidence downloads.
 MEDIA_ROOT = BASE_DIR / "private_uploads"
+
+# Server-side credentials only. Set environment variables before starting Django.
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+OPENAI_MODEL = os.environ.get('OPENAI_MODEL', '')
+FORENSIC_SERVICE_URL = os.environ.get('FORENSIC_SERVICE_URL', '')
+FORENSIC_SERVICE_TOKEN = os.environ.get('FORENSIC_SERVICE_TOKEN', '')
+ANALYSIS_TIMEOUT = 90

@@ -1,8 +1,14 @@
 from django.urls import path
 
-from . import views, evidence, council, reports
+from . import views, evidence, council, reports, workflow, overview
 
 urlpatterns = [
+    path('intelligence-overview/', overview.IntelligenceOverviewView.as_view()),
+    path('analysts/', workflow.AssignmentView.as_view()),
+    path('workflow/<str:claim_id>/', workflow.WorkflowView.as_view()),
+    path('workflow/<str:claim_id>/assign/', workflow.AssignmentView.as_view()),
+    path('workflow/<str:claim_id>/run/', workflow.RunWorkflowView.as_view()),
+    path('workflow/<str:claim_id>/report/', workflow.WorkflowReportView.as_view()),
     path('reports/', reports.ReportListView.as_view()),
     path('reports/<int:pk>/', reports.ReportDetailView.as_view()),
     path('reports/<int:pk>/action/', reports.ReportActionView.as_view()),

@@ -1,5 +1,6 @@
 import hashlib
 import uuid
+import mimetypes
 from pathlib import Path
 
 from django.db import transaction
@@ -13,7 +14,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Evidence, EvidenceEvent
+from .models import Claim, Evidence, EvidenceEvent
+
+
+def media_kind(name):
+    mime = mimetypes.guess_type(name)[0] or ''
+    prefix = mime.split('/')[0]
+    return prefix if prefix in ('image', 'video', 'audio') else ''
 
 
 def actor(request):
@@ -28,13 +35,14 @@ def digest(file):
 
 
 class EvidenceSerializer(serializers.ModelSerializer):
+    claim_id = serializers.CharField(source='claim.claim_id', read_only=True, default=None)
     evidence_id = serializers.SerializerMethodField()
     events = serializers.SerializerMethodField()
 
     class Meta:
         model = Evidence
         exclude = ['file']
-        read_only_fields = ['name', 'size', 'sha256', 'integrity', 'uploaded_by', 'created_at', 'verified_at']
+        read_only_fields = ['name', 'size', 'sha256', 'integrity', 'uploaded_by', 'created_at', 'verified_at', 'claim', 'media_type']
 
     def get_evidence_id(self, obj):
         return f'EV-{obj.pk:06d}'
@@ -48,6 +56,16 @@ class EvidenceListView(APIView):
 
     def get(self, request):
         rows = Evidence.objects.prefetch_related('events')
+        if request.query_params.get('claim_id'):
+            rows = rows.filter(claim__claim_id=request.query_params['claim_id'])
+        if request.query_params.get('case_reference'):
+            reference = request.query_params['case_reference']
+            rows = rows.filter(Q(case_reference=reference) | Q(claim__investigations__case_number=reference)).distinct()
+        evidence_id = request.query_params.get('id')
+        if evidence_id:
+            if not evidence_id.isdigit():
+                raise ValidationError('Evidence ID must be a number.')
+            rows = rows.filter(pk=evidence_id)
         query = request.query_params.get('q', '').strip()
         if query:
             match = Q(name__icontains=query) | Q(case_reference__icontains=query) | Q(sha256__icontains=query)
@@ -73,13 +91,36 @@ class EvidenceListView(APIView):
         checksum = digest(file)
         file.seek(0)
         name = Path(file.name.replace('\\', '/')).name[:255]
+        kind = media_kind(name)
+        claim_id = request.data.get('claim_id')
+        claim = get_object_or_404(Claim, claim_id=claim_id) if claim_id else None
+        reference = serializer.validated_data.get('case_reference', '')
+        if reference:
+            from cases.models import InvestigationCase
+            linked_case = InvestigationCase.objects.filter(case_number=reference).first()
+            if linked_case and linked_case.claim_id:
+                if claim and linked_case.claim_id != claim.pk:
+                    raise ValidationError('The case reference belongs to a different claim.')
+                claim = linked_case.claim
         file.name = uuid.uuid4().hex
         obj = None
         try:
             with transaction.atomic():
                 obj = serializer.save(file=file, name=name, size=file.size, sha256=checksum,
-                                      uploaded_by=request.user, verified_at=timezone.now())
+                                      uploaded_by=request.user, verified_at=timezone.now(), claim=claim, media_type=kind)
                 EvidenceEvent.objects.create(evidence=obj, action='Collected', actor=actor(request), detail='Original stored; SHA-256 calculated.')
+                if claim:
+                    from .workflow import record_case
+                    case = record_case(claim, request.user, 'evidence_added', f'Evidence EV-{obj.pk:06d}: {obj.name}')
+                    if not obj.case_reference:
+                        obj.case_reference = case.case_number
+                        obj.save(update_fields=['case_reference'])
+                    if kind:
+                        claim.media_type = kind
+                    claim.workflow_stage = 'verification'
+                    claim.save(update_fields=['media_type', 'workflow_stage'])
+                    case.evidence_count = Evidence.objects.filter(Q(claim=claim) | Q(case_reference=case.case_number)).count()
+                    case.save(update_fields=['evidence_count', 'updated_at'])
         except Exception:
             if obj and obj.file:
                 obj.file.delete(save=False)
@@ -89,6 +130,9 @@ class EvidenceListView(APIView):
 
 class EvidenceDetailView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        return Response(EvidenceSerializer(get_object_or_404(Evidence, pk=pk)).data)
 
     def patch(self, request, pk):
         obj = get_object_or_404(Evidence, pk=pk)

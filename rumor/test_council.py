@@ -2,11 +2,13 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from .models import Assessment, Claim, CouncilRun, ValidatedClaim
 
 
+@override_settings(OPENAI_API_KEY='', OPENAI_MODEL='')
 class CouncilTests(APITestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username='council-analyst')
@@ -19,13 +21,15 @@ class CouncilTests(APITestCase):
     def start(self):
         return self.client.post('/api/rumor/council/', {'claim_id': self.claim.claim_id})
 
-    def test_persisted_run_history_and_idempotent_draft(self):
+    @patch('rumor.providers.verify', return_value={'summary': 'Verification draft', 'claims': ['A public claim'], 'verdict': 'Unverified', 'confidence': 0, 'gaps': [], 'citations': []})
+    @patch('rumor.providers.narrative', return_value={'summary': 'Narrative draft', 'label': 'election-rally', 'alarming': False, 'severity': 'low', 'reasons': [], 'gaps': []})
+    def test_persisted_run_history_and_idempotent_draft(self, narrative, verify):
         response = self.start()
         self.assertEqual(response.status_code, 201)
         run = response.data
         self.assertEqual(run['status'], 'completed')
         self.assertEqual(len(run['agents']), 6)
-        self.assertIn('No local corpus candidate', run['draft'])
+        self.assertIn('Verification draft', run['draft'])
         self.claim.text = 'Changed after analysis'
         self.claim.save()
         history = self.client.get('/api/rumor/council/?claim_id=CL-COUNCIL')
@@ -57,16 +61,11 @@ class CouncilTests(APITestCase):
         self.assertEqual(self.start().status_code, 401)
         self.assertEqual(self.client.post('/api/rumor/council/1/accept/').status_code, 401)
 
-    def test_corpus_match_remains_a_candidate(self):
-        ValidatedClaim.objects.create(
-            claim_id='CORPUS-1', text=self.claim.text, authority='Recorded archive',
-            verified_at=timezone.now().date(), verdict='Supported',
-        )
+    def test_missing_provider_is_not_reported_as_completed(self):
         run = self.start().data
-        self.assertEqual(run['snapshot']['corpus_candidate']['claim_id'], 'CORPUS-1')
-        self.assertIn('Proposed verdict: Unverified', run['draft'])
-        self.assertIn('not corroboration', run['agents'][1]['body'])
-        self.assertEqual(run['agents'][2]['status'], 'unavailable')
+        self.assertEqual(run['status'], 'needs_configuration')
+        self.assertIn('OPENAI_API_KEY', run['error'])
+        self.assertEqual(self.client.post(f'/api/rumor/council/{run["id"]}/accept/').status_code, 400)
 
     @patch('rumor.council.analyze', side_effect=RuntimeError('provider error'))
     def test_failure_recorded_and_not_acceptable(self, analyze):

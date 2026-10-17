@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { request, readSession, refreshSession } from '../api/client';
 import { useApp } from '../context/AppContext';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AnalysisOutput } from '../components/WorkflowPanel';
 import { listResults } from '../components/PaginationBar';
 
 const base = '/api/rumor/reports/';
@@ -8,6 +10,9 @@ const fields = ['title', 'language', 'case_reference', 'summary', 'findings', 'r
 const empty = { title: '', language: 'en', case_reference: '', summary: '', findings: '', recommendations: '' };
 
 export default function Reports() {
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const reportId = params.get('report');
   const { notify } = useApp();
   const [rows, setRows] = useState([]);
   const [stats, setStats] = useState({});
@@ -43,6 +48,19 @@ export default function Reports() {
     else setError(result.data?.detail || 'Reports could not be loaded.');
     setLoading(false);
   }, [query, filter]);
+  useEffect(() => {
+    if (!reportId) return;
+    let cancelled = false;
+    request(`${base}${encodeURIComponent(reportId)}/`).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setActive(result.data);
+        setForm(Object.fromEntries(fields.map((key) => [key, result.data[key]])));
+        setCreating(false); setDirty(false); setPreview(null);
+      } else setError('The requested investigation report could not be opened.');
+    });
+    return () => { cancelled = true; };
+  }, [reportId]);
   useEffect(() => { const timer = setTimeout(load, 250); return () => clearTimeout(timer); }, [load]);
   useEffect(() => {
     if (!creating) return undefined;
@@ -138,8 +156,10 @@ export default function Reports() {
           <h4>{content.title}</h4><p>{content.case_reference}</p>
           {['summary', 'findings', 'recommendations'].map((key) => <section key={key}><h6 className="text-capitalize">{key}</h6><p style={{ whiteSpace: 'pre-wrap' }}>{content[key]}</p></section>)}
           <h6>Recorded source snapshot</h6><div className="stat-mini mb-2">Captured {sources?.captured_at ? new Date(sources.captured_at).toLocaleString() : ''}</div>
-          {sources?.claims.map((claim) => <div className="queue-item" key={claim.id}><strong>{claim.claim_id} ? {claim.status}</strong><p>{claim.text}</p><div style={{ overflowWrap: 'anywhere' }}>{claim.source} ? {claim.url}</div></div>)}
-          {sources?.evidence.map((item) => <div className="queue-item" key={item.id}><strong>{item.name} ? {item.integrity}</strong><div className="evidence-hash" style={{ overflowWrap: 'anywhere' }}>{item.sha256}</div></div>)}
+          {content.case_reference && <button type="button" className="btn btn-outline-soft btn-sm mb-3" onClick={() => navigate(`/cases?case=${encodeURIComponent(content.case_reference)}`)}>Open case {content.case_reference}</button>}
+          {sources?.claims?.map((claim) => <div className="queue-item" key={claim.id}><button type="button" className="btn btn-link p-0" onClick={() => navigate(`/verify?id=${encodeURIComponent(claim.claim_id)}`)}>{claim.claim_id} · {claim.status}</button><p>{claim.text}</p><div style={{ overflowWrap: 'anywhere' }}>{claim.source} · {claim.url}</div></div>)}
+          {sources?.evidence?.map((item) => <div className="queue-item" key={item.id}><button type="button" className="btn btn-link p-0" onClick={() => navigate(`/vault?evidence=${item.id}`)}>{item.name} · {item.integrity}</button><div className="evidence-hash" style={{ overflowWrap: 'anywhere' }}>{item.sha256}</div></div>)}
+          {sources?.analysis_runs?.map((analysis) => <AnalysisOutput key={analysis.id} analysis={analysis} />)}
         </article></div>}
       </div>
       <div className="col-xl-3">{active && <>

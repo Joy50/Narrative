@@ -24,6 +24,7 @@ class ClaimSerializer(serializers.ModelSerializer):
             'first_seen', 'first_seen_label', 'match_count', 'priority', 'status',
             'analyst', 'evidence', 'filters', 'review_score', 'notes', 'intake_kind',
             'validated_match', 'created_at',
+            'assigned_to', 'workflow_stage', 'handling_mode', 'media_type', 'generated_report',
         )
 
     def get_first_seen_label(self, obj):

@@ -174,7 +174,7 @@ export default function Layout() {
                   <i className="fas fa-search" />
                   <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={lang === 'bn' ? 'দাবি, URL বা কেস খুঁজুন' : 'Search claims, URLs, or cases'} />
                 </form>
-                <select className="form-select" style={{ width: 92 }} value={range} onChange={(e) => setRange(e.target.value)}>
+                <select className="form-select" aria-label="Time window" style={{ width: 92 }} value={range} onChange={(e) => setRange(e.target.value)}>
                   <option value="24h">24h</option>
                   <option value="7d">7d</option>
                   <option value="30d">30d</option>
@@ -223,7 +223,7 @@ export default function Layout() {
             </div>
           </div>
 
-          <Outlet />
+          <Outlet context={{ range }} />
 
           <footer className="page-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div><i className="fas fa-shield-halved me-2" />{t.classification}</div>

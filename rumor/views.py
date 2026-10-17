@@ -75,7 +75,7 @@ class ClaimListView(APIView):
                 qs = qs.filter(status=Claim.Status.UNVERIFIED)
             elif status_filter == 'Media':
                 qs = qs.filter(
-                    Q(intake_kind='media')
+                    Q(intake_kind='media') | ~Q(media_type='')
                     | Q(source__icontains='image')
                     | Q(source__icontains='video')
                     | Q(source__icontains='audio')
@@ -111,6 +111,8 @@ class ClaimDetailView(APIView):
                 setattr(claim, key, request.data[key])
         if request.data.get('assign_me'):
             claim.analyst = operator_name(request.user)
+            claim.assigned_to = request.user
+            claim.workflow_stage = 'verification'
         claim.save()
         return Response(serialize_claim(claim))
 
@@ -122,7 +124,8 @@ class ClaimByIdView(APIView):
         claim = get_object_or_404(Claim, claim_id=claim_id)
         hit = match_validated(claim)
         payload = serialize_claim(claim)
-        payload['evidence_items'] = evidence_for(claim, hit)
+        from .workflow import recorded_evidence_for
+        payload['evidence_items'] = recorded_evidence_for(claim)
         assessment_id = request.query_params.get('assessment')
         latest = (get_object_or_404(claim.assessments, pk=assessment_id)
                   if assessment_id and assessment_id.isdigit() else claim.assessments.first())
@@ -136,6 +139,9 @@ class IntakeView(APIView):
     def post(self, request):
         data = request.data or {}
         kind = (data.get('source_kind') or data.get('intake_kind') or 'text').lower()
+        if request.FILES.get('file'):
+            from .intake import ingest_media
+            return ingest_media(request)
         text = (data.get('text') or data.get('description') or '').strip()
         url = (data.get('url') or data.get('source_url') or '').strip()
         if kind == 'url' and url and not text:
@@ -156,6 +162,15 @@ class IntakeView(APIView):
             intake_kind=kind if kind in ('url', 'text', 'media') else 'text',
             priority=priority,
         )
+        from .workflow import record_case
+        for claim in [*created, *duplicates]:
+            from .evidence import media_kind
+            from urllib.parse import urlparse
+            detected_media = media_kind(urlparse(claim.url).path)
+            if detected_media and not claim.media_type:
+                claim.media_type = detected_media
+                claim.save(update_fields=['media_type'])
+            record_case(claim, request.user, 'intake', 'Submission entered Rumor Scanner.')
         return Response({
             'created': serialize_claims(created),
             'duplicates': serialize_claims(duplicates),
@@ -206,6 +221,8 @@ class AssessView(APIView):
         )
         payload = serialize_claim(claim)
         payload['assessment'] = AssessmentSerializer(assessment).data
+        from .workflow import execute_stage
+        execute_stage(claim, 'narrative', request.user)
         return Response(payload)
 
 
@@ -289,4 +306,11 @@ class NarrativeAnalysisView(APIView):
 
     def get(self, request, slug=None):
         chosen = slug or request.query_params.get('cluster') or ''
-        return Response(build_narrative_analysis(chosen.strip() or None))
+        claim_id = request.query_params.get('claim_id')
+        claim = get_object_or_404(Claim, claim_id=claim_id) if claim_id else None
+        if claim:
+            chosen = claim.cluster
+        payload = build_narrative_analysis(chosen.strip() or None)
+        if claim and not claim.cluster:
+            payload['selected'] = None
+        return Response(payload)

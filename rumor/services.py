@@ -761,6 +761,7 @@ def build_narrative_analysis(selected_slug=None):
 
 
 RULE_CATALOG = (
+    ('WF-NARRATIVE', 'v1', 'Narrative analysis review lead'),
     ('SYNTHETIC-SIG', 'v1.4', 'Synthetic or deepfake indicator on an open claim'),
     ('VALIDATED-DIVERGE', 'v1.2', 'Same topic as a validated record, with a different assertion'),
     ('RECYCLE-MEDIA', 'v3.0', 'Out-of-context or archive-matched media'),
@@ -990,6 +991,23 @@ def build_alert_analysis(selected_id=None, operator=''):
         alert['mine'] = bool(assignee) and assignee.strip().lower() == operator_key
         alert['meta'] = f"{alert.get('ref') or alert['id']} · {assignee or 'Unassigned'}"
         alerts.append(alert)
+
+    from .models import WorkflowAlert
+    for saved in WorkflowAlert.objects.filter(is_active=True).select_related('claim'):
+        claim = saved.claim
+        hours = _hours_since(saved.updated_at, now)
+        push({
+            'id': f'WF-{claim.pk}', 'sev': saved.severity,
+            'title': f'Narrative review: {_excerpt(claim.text)}', 'desc': saved.summary,
+            'rule': 'WF-NARRATIVE · v1', 'rule_id': 'WF-NARRATIVE',
+            'time': _ago_label(saved.updated_at, now), 'due': 'Analyst review requested',
+            'ref': claim.claim_id, 'score': {'low': 25, 'medium': 50, 'high': 75, 'critical': 95}.get(saved.severity, 50),
+            'hours': hours, 'matches': claim.match_count, 'claim_id': claim.claim_id,
+            'cluster': claim.cluster, 'status': claim.status, 'priority': claim.priority,
+            'platform': infer_platform(claim.source, claim.url), 'source': claim.source,
+            'factors': [], 'why': saved.reasons, 'recommendation': 'Review the narrative analysis and cited investigation evidence. This is an urgency lead, not a verdict.',
+            'validated': None, 'related': [],
+        })
 
     for claim in claims:
         if claim.status in CLOSED_STATUSES:

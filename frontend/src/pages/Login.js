@@ -7,7 +7,7 @@ export default function Login() {
   useEffect(() => {
     document.title = 'NarrativeShield · Secure Access';
   }, []);
-  const [form, setForm] = useState({ operatorId: '', passphrase: '', token: '' });
+  const [form, setForm] = useState({ operatorId: '', passphrase: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -19,8 +19,8 @@ export default function Login() {
   const onSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.operatorId || !form.passphrase || !form.token) {
-      setError('Operator ID, passphrase, and clearance token are required.');
+    if (!form.operatorId.trim() || !form.passphrase) {
+      setError('Username and password are required.');
       return;
     }
     setBusy(true);
@@ -32,8 +32,8 @@ export default function Login() {
   return (
     <div className="login-shell d-flex flex-column">
       <div className="login-banner">RESTRICTED  //  NARRATIVESHIELD  //  AUTHORIZED PERSONNEL ONLY</div>
-      <div className="flex-grow-1 d-flex align-items-center justify-content-center p-4">
-        <div className="login-card p-4 p-md-5 position-relative">
+      <main className="login-stage">
+        <div className="login-card">
           <div className="text-center mb-4">
             <div className="login-mark d-inline-flex align-items-center justify-content-center mb-3">
               <img src={`${process.env.PUBLIC_URL}/logo.png`} alt="NarrativeShield" />
@@ -42,25 +42,21 @@ export default function Login() {
             <div className="small login-sub">Rumor Scanner & Deepfake Intelligence</div>
           </div>
 
-          <form onSubmit={onSubmit}>
-            <label className="small mb-1 login-label">Operator ID</label>
+          <form onSubmit={onSubmit} aria-label="Sign in">
+            <label htmlFor="login-username" className="login-label">Username</label>
             <div className="login-field mb-3">
-              <i className="fas fa-user-secret" />
-              <input className="form-control login-input" name="operatorId" value={form.operatorId} onChange={onChange} placeholder="a.rahman" autoComplete="username" />
+              <i className="fas fa-user-secret" aria-hidden="true" />
+              <input id="login-username" className="form-control login-input" name="operatorId" value={form.operatorId} onChange={onChange} placeholder="Enter your username" autoComplete="username" autoCapitalize="none" spellCheck={false} aria-invalid={!!error} aria-describedby={error ? 'login-error' : undefined} />
             </div>
-            <label className="small mb-1 login-label">Passphrase</label>
+            <label htmlFor="login-password" className="login-label">Password</label>
             <div className="login-field mb-3">
-              <i className="fas fa-key" />
-              <input className="form-control login-input" type="password" name="passphrase" value={form.passphrase} onChange={onChange} placeholder="••••••••" autoComplete="current-password" />
-            </div>
-            <label className="small mb-1 login-label">Clearance token</label>
-            <div className="login-field mb-3">
-              <i className="fas fa-fingerprint" />
-              <input className="form-control login-input" name="token" value={form.token} onChange={onChange} placeholder="NS-ALPHA-7" />
+              <i className="fas fa-key" aria-hidden="true" />
+              <input id="login-password" className="form-control login-input" type="password" name="passphrase" value={form.passphrase} onChange={onChange} placeholder="Enter your password" autoComplete="current-password" aria-invalid={!!error} aria-describedby={error ? 'login-error' : undefined} />
             </div>
 
+
             {error && (
-              <div className="mb-3 small login-error">
+              <div id="login-error" className="mb-3 small login-error" role="alert">
                 <i className="fas fa-triangle-exclamation me-1" />{error}
               </div>
             )}
@@ -71,11 +67,11 @@ export default function Login() {
           </form>
 
           <div className="mt-4 small login-foot">
-            <div className="mb-1"><i className="fas fa-building-shield me-2" />Intelligence Operations · authorized analysts only</div>
-            <div>Demo access: <code>a.rahman</code> / <code>shield-0421</code> / <code>NS-ALPHA-7</code></div>
+            <div className="mb-2"><i className="fas fa-building-shield me-2" aria-hidden="true" />Authorized analysts only</div>
+            <div className="login-demo">Demo access: <code>a.rahman</code> / <code>shield-0421</code></div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

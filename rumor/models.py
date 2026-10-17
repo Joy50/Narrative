@@ -3,6 +3,11 @@ from django.db import models
 
 
 class Claim(models.Model):
+    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_claims')
+    workflow_stage = models.CharField(max_length=30, default='intake')
+    handling_mode = models.CharField(max_length=20, default='analyst')
+    media_type = models.CharField(max_length=20, blank=True)
+    generated_report = models.ForeignKey('IntelligenceReport', on_delete=models.SET_NULL, null=True, blank=True, related_name='workflow_claims')
     class Priority(models.TextChoices):
         CRITICAL = 'Critical', 'Critical'
         HIGH = 'High', 'High'
@@ -133,6 +138,8 @@ class AlertState(models.Model):
 
 
 class Evidence(models.Model):
+    claim = models.ForeignKey(Claim, on_delete=models.SET_NULL, null=True, blank=True, related_name='originals')
+    media_type = models.CharField(max_length=20, blank=True)
     file = models.FileField(upload_to='evidence/%Y/%m/')
     name = models.CharField(max_length=255)
     size = models.PositiveBigIntegerField()
@@ -221,3 +228,31 @@ class ReportEvent(models.Model):
 
     class Meta:
         ordering = ['-created_at', '-id']
+
+
+class AnalysisRun(models.Model):
+    claim = models.ForeignKey(Claim, on_delete=models.CASCADE, related_name='analysis_runs')
+    kind = models.CharField(max_length=20)
+    status = models.CharField(max_length=30, default='running')
+    provider = models.CharField(max_length=80, blank=True)
+    result = models.JSONField(default=dict)
+    input_snapshot = models.JSONField(default=dict)
+    error = models.TextField(blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        constraints = [models.UniqueConstraint(fields=['claim', 'kind'], condition=models.Q(status='running'), name='one_active_claim_analysis')]
+
+
+class WorkflowAlert(models.Model):
+    claim = models.OneToOneField(Claim, on_delete=models.CASCADE, related_name='workflow_alert')
+    analysis = models.ForeignKey(AnalysisRun, on_delete=models.SET_NULL, null=True)
+    severity = models.CharField(max_length=20)
+    summary = models.TextField()
+    reasons = models.JSONField(default=list)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)

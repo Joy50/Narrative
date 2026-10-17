@@ -277,7 +277,7 @@ export default function EarlyWarning() {
                     </button>
                     <button className="btn btn-outline-soft" onClick={openInvestigation}>Open investigation</button>
                     {selected.cluster && (
-                      <button className="btn btn-outline-soft" onClick={() => navigate(`/explorer?cluster=${encodeURIComponent(selected.cluster)}`)}>
+                      <button className="btn btn-outline-soft" onClick={() => navigate(`/explorer?cluster=${encodeURIComponent(selected.cluster)}${selected.claim_id ? `&claim=${encodeURIComponent(selected.claim_id)}` : ''}`)}>
                         Open narrative cluster
                       </button>
                     )}

@@ -314,6 +314,8 @@ def open_case(*, user, claim_id='', title='', summary='', priority=''):
         .filter(source_key=source_key)
         .first()
     )
+    if not existing and claim:
+        existing = InvestigationCase.objects.select_for_update().filter(claim=claim).first()
     if existing:
         return existing, False
     try:

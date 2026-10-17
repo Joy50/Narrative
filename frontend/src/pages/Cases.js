@@ -4,6 +4,7 @@ import { casesGet, casesSend, mapCase } from '../api/cases';
 import PaginationBar, { listCount, listResults } from '../components/PaginationBar';
 import { EmptyState } from '../components/ui';
 import { useApp } from '../context/AppContext';
+import WorkflowPanel from '../components/WorkflowPanel';
 
 const ACTION_META = {
   triage: { label: 'Mark triaged', icon: 'fa-filter' },
@@ -52,7 +53,10 @@ export default function Cases() {
   const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [selected, setSelected] = useState(null);
-  const [focusNumber, setFocusNumber] = useState('');
+  const [focusNumber, setFocusNumber] = useState(params.get('case') || '');
+  useEffect(() => {
+    if (params.get('case')) setFocusNumber(params.get('case'));
+  }, [params]);
   const [bucket, setBucket] = useState('all');
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
@@ -353,7 +357,12 @@ export default function Cases() {
                     <i className={`fas ${busy === 'notes' ? 'fa-spinner fa-spin' : 'fa-floppy-disk'} me-1`} />Save notes
                   </button>
                   <div className="d-grid gap-2">
-                    <button className="transition-btn primary" onClick={() => navigate('/forensic')}><i className="fas fa-microscope" />Open forensic workbench</button>
+                    <button className="transition-btn primary" disabled={!selected.claimId} onClick={() => navigate(`/forensic?claim=${encodeURIComponent(selected.claimId)}`)}><i className="fas fa-microscope" />Open forensic workbench</button>
+                    <button className="transition-btn" onClick={() => navigate(`/vault?case=${encodeURIComponent(selected.id)}`)}>Case evidence repository</button>
+                    {selected.claimId && <>
+                      <button className="transition-btn" onClick={() => navigate(`/council?claim=${encodeURIComponent(selected.claimId)}`)}>AI Council and reports</button>
+                      <button className="transition-btn" onClick={() => navigate(`/explorer?claim=${encodeURIComponent(selected.claimId)}`)}>Narrative analysis</button>
+                    </>}
                     <button
                       className="transition-btn"
                       onClick={() => (selected.claimId ? navigate(`/verify?id=${encodeURIComponent(selected.claimId)}`) : notify('This case has no linked claim'))}
@@ -394,6 +403,7 @@ export default function Cases() {
           </div>
         </div>
       </div>
+      {selected?.claimId && <WorkflowPanel key={selected.claimId} claimId={selected.claimId} onChange={load} />}
     </>
   );
 }

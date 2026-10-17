@@ -4,6 +4,7 @@ import { mapClaim, rumorGet, rumorSend } from '../api/rumor';
 import PaginationBar, { listCount, listResults } from '../components/PaginationBar';
 import { EmptyState, ThreatPriorityIndicator, VerificationStatusBadge } from '../components/ui';
 import { useApp } from '../context/AppContext';
+import WorkflowPanel from '../components/WorkflowPanel';
 
 const LANGS = ['All', 'Bangla', 'English', 'Banglish'];
 const STATUSES = ['All', 'Unreviewed', 'Supported', 'Media', 'High'];
@@ -14,7 +15,7 @@ export default function RumorScanner() {
   const [params] = useSearchParams();
   const [langFilter, setLangFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
-  const [query, setQuery] = useState(params.get('q') || '');
+  const [query, setQuery] = useState(params.get('q') || params.get('claim') || '');
   const [claims, setClaims] = useState([]);
   const [validated, setValidated] = useState([]);
   const [feeds, setFeeds] = useState([]);
@@ -24,6 +25,12 @@ export default function RumorScanner() {
   const [online, setOnline] = useState(false);
   const [busy, setBusy] = useState('');
   const [selectedId, setSelectedId] = useState(params.get('claim') || '');
+  useEffect(() => {
+    setQuery(params.get('q') || params.get('claim') || '');
+    setSelectedId(params.get('claim') || '');
+    setClaimPage(1);
+    setLangFilter('All'); setStatusFilter('All');
+  }, [params]);
   const [intake, setIntake] = useState({ text: '', url: '', source: '' });
   const [claimPage, setClaimPage] = useState(1);
   const [claimPageSize, setClaimPageSize] = useState(8);
@@ -111,9 +118,8 @@ export default function RumorScanner() {
     if (result?.ok) setIntake({ text: '', url: '', source: '' });
   };
 
-  const assignMe = (claim) => run('assign', () => rumorSend(`claims/${claim.pk}/`, {
-    method: 'PATCH',
-    body: { assign_me: true, analyst: user?.name },
+  const assignMe = (claim) => run('assign', () => rumorSend(`workflow/${encodeURIComponent(claim.id)}/assign/`, {
+    body: { mode: 'analyst', user_id: user?.id },
   }), `Assigned ${claim.id} to ${user?.name || 'you'}`);
 
   return (
@@ -162,6 +168,7 @@ export default function RumorScanner() {
 
       <div className="row g-4">
         <div className="col-lg-8">
+          {selected && <WorkflowPanel key={selected.id} claimId={selected.id} onChange={load} />}
           {visible.length === 0 && <EmptyState title="No matching claims" body="Adjust filters or ingest a public URL / claim into the rumor app." />}
           {visible.map((c) => {
             const hit = c.validatedMatch;
@@ -222,7 +229,7 @@ export default function RumorScanner() {
                 <div className="stat-mini mb-3">{selected.cluster} · {selected.analyst || 'Unassigned'}</div>
                 <div className="d-grid gap-2">
                   <button className="btn btn-outline-soft text-start" onClick={() => navigate(`/verify?id=${selected.id}`)}>Open verification desk</button>
-                  <button className="btn btn-outline-soft text-start" onClick={() => navigate('/forensic')}>Send media to deepfake analysis</button>
+                  <button className="btn btn-outline-soft text-start" onClick={() => navigate(`/forensic?claim=${encodeURIComponent(selected.id)}`)}>Send media to deepfake analysis</button>
                 </div>
               </div>
             </div>
@@ -286,7 +293,7 @@ export default function RumorScanner() {
               <button className="btn btn-outline-soft text-start" disabled={!!busy} onClick={() => run('extract', () => rumorSend('extract/'), 'Bulk extraction finished against existing rumor records')}>
                 {busy === 'extract' ? 'Extracting…' : 'Bulk claim extraction'}
               </button>
-              <button className="btn btn-outline-soft text-start" onClick={() => navigate(`/council${selectedId ? `?claim=${encodeURIComponent(selectedId)}` : ''}`)}>Request AI Council review</button>
+              <button className="btn btn-outline-soft text-start" disabled={!selected} onClick={() => navigate(`/council?claim=${encodeURIComponent(selected.id)}`)}>Request AI Council review</button>
             </div>
           </div>
         </div>

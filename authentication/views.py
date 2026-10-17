@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.contrib.auth import authenticate
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -41,20 +40,11 @@ class LoginView(APIView):
 
         operator_id = serializer.validated_data['operator_id'].strip().lower()
         passphrase = serializer.validated_data['passphrase']
-        clearance_token = serializer.validated_data['clearance_token'].strip()
 
         user = authenticate(request, username=operator_id, password=passphrase)
         if user is None or not user.is_active:
             return Response(
-                {'detail': 'Invalid operator credentials or clearance token.'},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-
-        profile = getattr(user, 'profile', None)
-        expected = (profile.clearance_token if profile else '') or settings.ORGANIZATION_CLEARANCE_TOKEN
-        if clearance_token.upper() != expected.upper():
-            return Response(
-                {'detail': 'Clearance token rejected by access broker.'},
+                {'detail': 'Invalid username or password.'},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 

@@ -21,11 +21,10 @@ class AuthenticationApiTests(TestCase):
             clearance_token='NS-ALPHA-7',
         )
 
-    def test_login_success(self):
+    def test_login_success_without_clearance_token(self):
         response = self.client.post('/api/auth/login/', {
             'operator_id': 'a.rahman',
             'passphrase': 'shield-0421',
-            'clearance_token': 'NS-ALPHA-7',
         }, format='json')
         self.assertEqual(response.status_code, 200)
         self.assertIn('access', response.data)
@@ -35,7 +34,6 @@ class AuthenticationApiTests(TestCase):
         response = self.client.post('/api/auth/login/', {
             'operator_id': 'a.rahman',
             'passphrase': 'wrong',
-            'clearance_token': 'NS-ALPHA-7',
         }, format='json')
         self.assertEqual(response.status_code, 401)
 
@@ -46,7 +44,6 @@ class AuthenticationApiTests(TestCase):
         login = self.client.post('/api/auth/login/', {
             'operator_id': 'a.rahman',
             'passphrase': 'shield-0421',
-            'clearance_token': 'NS-ALPHA-7',
         }, format='json')
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {login.data["access"]}')
         me = self.client.get('/api/auth/me/')

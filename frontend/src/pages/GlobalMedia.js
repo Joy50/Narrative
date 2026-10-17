@@ -28,7 +28,7 @@ export default function GlobalMedia() {
     if (feed.ok) {
       setNews(listResults(feed.data));
       setCount(listCount(feed.data));
-    } else notify(feed.data?.detail || 'Media API unavailable. Start Django on 8001.');
+    } else notify(feed.data?.detail || 'Media API unavailable. Start Django on 8000.');
   };
 
   useEffect(() => { load(); }, [days, sentiment, country, page, pageSize]);

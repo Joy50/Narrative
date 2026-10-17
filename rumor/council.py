@@ -1,8 +1,4 @@
-"""Persisted, synchronous council analysis using the local evidence corpus.
-
-No external model or media detector is configured. Outputs explicitly identify
-these limits; corpus similarity never establishes a verdict.
-"""
+"""AI Council orchestration over the shared investigation workflow."""
 import logging
 
 from django.db import transaction
@@ -15,7 +11,7 @@ from rest_framework.views import APIView
 
 from config.pagination import paginate
 from .models import Assessment, Claim, CouncilRun
-from .services import extract_atomic_claims, match_validated, operator_name
+from .services import operator_name
 
 logger = logging.getLogger(__name__)
 
@@ -34,58 +30,49 @@ class StartSerializer(serializers.Serializer):
 
 
 def analyze(run):
+    from django.conf import settings
+    from .workflow import execute_pipeline, generate_report, record_case, AnalysisSerializer
     claim = run.claim
-    hit = match_validated(claim)
-    atomic = extract_atomic_claims(claim.text)
-    candidate = None if not hit else {
-        'claim_id': hit.claim_id, 'text': hit.text, 'url': hit.source_url,
-        'authority': hit.authority, 'evidence': hit.evidence,
-        'verified_at': hit.verified_at.isoformat(),
-    }
+    claim.handling_mode, claim.analyst, claim.assigned_to = 'council', 'AI Council', None
+    claim.save(update_fields=['handling_mode', 'analyst', 'assigned_to'])
+    case = record_case(claim, run.started_by, 'council_started', f'AI Council run #{run.pk} started.')
+    case.assignee, case.assignee_name = None, 'AI Council'
+    case.save(update_fields=['assignee', 'assignee_name', 'updated_at'])
+    analyses = execute_pipeline(claim, run.started_by)
+    claim.refresh_from_db()
+    completed = all(row.status == 'completed' for row in analyses)
+    report = generate_report(claim, run.started_by) if completed else None
+    run.case = case
     run.snapshot = {
         'claim_id': claim.claim_id, 'text': claim.text, 'language': claim.language,
         'source': claim.source, 'url': claim.url, 'evidence': claim.evidence,
-        'first_seen': claim.first_seen.isoformat(), 'cluster': claim.cluster,
-        'corpus_candidate': candidate, 'engine': 'local-rules-v1',
+        'engine': settings.OPENAI_MODEL or 'OpenAI not configured',
+        'analysis_runs': AnalysisSerializer(analyses, many=True).data,
+        'report_id': report.pk if report else None,
     }
-
-    def agent(name, role, body, status='complete'):
-        return {'name': name, 'role': role, 'body': body, 'status': status}
-
+    outputs = {row.kind: row for row in analyses}
+    def output(name, role, kind):
+        row = outputs.get(kind)
+        return {'name': name, 'role': role,
+                'status': ('complete' if row.status == 'completed' else row.status) if row else 'queued',
+                'body': (row.result.get('summary') or row.error) if row else 'Waiting for the preceding investigation stage.'}
     run.agents = [
-        agent('Claim Agent', 'Rule-based claim segmentation',
-              f'Language: {claim.language}. {len(atomic)} segment(s): ' + ' | '.join(atomic)),
-        agent('OSINT Agent', 'Local validated-claim corpus lookup',
-              f'Candidate {hit.claim_id}: {hit.text}. Authority: {hit.authority}. '
-              'Similarity is a retrieval hint, not corroboration. No live web search was performed.'
-              if hit else 'No candidate found in the local corpus. No live web search was performed.',
-              'review'),
-        agent('Forensic Agent', 'Media analysis availability',
-              'No media detector is configured. Authenticity, manipulation and detector scores are unavailable.', 'unavailable'),
-        agent('Context Agent', 'Recorded chronology and context',
-              f'First recorded: {claim.first_seen.isoformat()}. Cluster: {claim.cluster or "Unassigned"}. '
-              'This intake timestamp does not establish the date of the event.'),
-        agent('Challenge Agent', 'Evidence limitations and consistency',
-              'Retrieved candidates require manual comparison. Source URLs have not been fetched or validated. '
-              'Missing evidence does not refute a claim.', 'review'),
-        agent('Draft Composer', 'Conservative assessment for analyst review',
-              'Draft prepared as Unverified with confidence unset. Human review is required.'),
+        output('Claim Agent', 'Claim extraction and verification', 'verification'),
+        output('OSINT Agent', 'OpenAI public web research with citations', 'verification'),
+        output('Forensic Agent', 'Linked original media analysis' if claim.media_type else 'No media original requires analysis', 'forensic'),
+        output('Context Agent', 'Narrative and context analysis', 'narrative'),
+        output('Challenge Agent', 'Evidence gaps and review urgency', 'narrative'),
+        {'name': 'Draft Composer', 'role': 'Investigation report draft', 'status': 'complete' if report else 'queued',
+         'body': f'Intelligence report #{report.pk} saved as a draft for review.' if report else 'Investigation is incomplete; report generation remains pending.'},
     ]
-    run.checks = [
-        'Local rules produced this run; no external AI provider is configured.',
-        'Corpus similarity does not establish support or contradiction.',
-        'Media authenticity and source availability remain unchecked.',
-        'Saving this draft does not change the claim verdict or approve publication.',
-    ]
-    run.draft = (
-        f'Council run #{run.pk} · {claim.claim_id}\nClaim: {claim.text}\n'
-        f'Recorded evidence: {claim.evidence or "None recorded"}\n'
-        + (f'Corpus candidate: {hit.claim_id} · {hit.authority}\n{hit.text}\n'
-           f'Recorded source: {hit.source_url or "No URL recorded"}\n' if hit else 'No local corpus candidate found.\n')
-        + 'Proposed verdict: Unverified. Confidence: unset.\n'
-        + '\n'.join(run.checks)
-    )
-    run.status = 'completed'
+    if not claim.media_type:
+        run.agents[2].update(status='not_required', body='No image, audio, or video original is linked to this claim.')
+    run.checks = ['AI outputs are drafts and do not approve the claim or report.',
+                  'Sources and forensic limitations must be reviewed before a verdict.',
+                  'Alerts indicate review urgency, not proof that a claim is false.']
+    run.draft = '\n\n'.join(f'{row.kind.upper()}: {row.status}\n{row.result.get("summary", "")}\n{row.error}' for row in analyses)
+    run.status = 'completed' if completed else analyses[-1].status
+    run.error = '' if completed else analyses[-1].error
     run.completed_at = timezone.now()
     run.save()
 
